@@ -232,6 +232,34 @@ class TTMatrixTest(tf.test.TestCase):
       # TODO: why so bad accuracy?
       self.assertAllClose(res_actual_val, res_desired_val, atol=1e-4, rtol=1e-4)
 
+  def testTTMatTimesTTVecOnRight(self):
+    # Multiply a TT-matrix by a TT-vector on the right.
+    left_shape = (2, 3, 4)
+    right_shape = (4, 4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix((left_shape, right_shape), tt_rank=3)
+      tt_vec = initializers.random_tensor(right_shape)
+      res_actual = ops.matmul(tt_mat, tt_vec)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('nm,m->n', ops.full(tt_mat), tf.reshape(ops.full(tt_vec), [-1]))
+      res_desired = tf.reshape(res_desired, left_shape)
+      res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-4, rtol=1e-4)
+
+  def testTTMatTimesTTVecOnLeft(self):
+    # Multiply a TT-matrix by a TT-vector on the left.
+    left_shape = (2, 3, 4)
+    right_shape = (4, 4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix((left_shape, right_shape), tt_rank=3)
+      tt_vec = initializers.random_tensor(left_shape)
+      res_actual = ops.matmul(tt_vec, tt_mat)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('n,nm->m', tf.reshape(ops.full(tt_vec), [-1]), ops.full(tt_mat))
+      res_desired = tf.reshape(res_desired, right_shape)
+      res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-4, rtol=1e-4)
+
   def testTTMatTimesDenseVec(self):
     # Multiply a TT-matrix by a dense vector.
     inp_shape = (2, 3, 4)
@@ -248,7 +276,7 @@ class TTMatrixTest(tf.test.TestCase):
       self.assertAllClose(res_actual_val, res_desired_val)
 
   def testDenseMatTimesTTVec(self):
-    # Multiply a TT-matrix by a dense vector.
+    # Multiply a dense matrix by a TT-vector.
     inp_shape = (3, 3, 3, 3)
     out_shape = (3, 3, 3, 3)
     np.random.seed(1)
@@ -774,6 +802,23 @@ class TTMatrixTestBatch(tf.test.TestCase):
       res_desired = tf.matmul(ops.full(tt_mat_1), ops.full(tt_mat_2))
       res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
       # TODO: why so bad accuracy?
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
+
+  def testTTMatTimesTTVecOnRightSameBatchSize(self):
+    # Multiply a batch of TT-matrices by another batch of TT-vectors on the right with the
+    # same batch sizes.
+    left_shape = (2, 3)
+    right_shape = (4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix_batch((left_shape, right_shape),
+                                                  tt_rank=3, batch_size=3)
+      tt_vec = initializers.random_tensor_batch(right_shape,
+                                                  batch_size=3)
+      res_actual = ops.matmul(tt_mat, tt_vec)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('onm,om->on', ops.full(tt_mat), tf.layers.flatten(ops.full(tt_vec)))
+      res_desired = tf.reshape(res_desired, (3,2,3))
+      res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
       self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
 
   def testTTMatTimesTTMatBroadcasting(self):
