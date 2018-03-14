@@ -101,96 +101,101 @@ def _full_tt_batch(tt):
     return tf.reshape(res, shape)
 
 
-def tt_tt_matmul(tt_matrix_a, tt_matrix_b):
-  """Multiplies two TT-matrices and returns the TT-matrix of the result.
+def tt_tt_matmul(tt_a, tt_b):
+  """Multiplies two TT-matrices or TT-matrix and vector and returns the result.
 
   Args:
-    tt_matrix_a: `TensorTrain` or `TensorTrainBatch` object containing
-      a TT-matrix (a batch of TT-matrices) of size M x N
-    tt_matrix_b: `TensorTrain` or `TensorTrainBatch` object containing
-      a TT-matrix (a batch of TT-matrices) of size N x P
+    tt_a: `TensorTrain` or `TensorTrainBatch` of size (M x) N
+    tt_b: `TensorTrain` or `TensorTrainBatch` object containing
+      a TT-matrix (a batch of TT-matrices) of size N (x P)
 
   Returns
-    `TensorTrain` object containing a TT-matrix of size M x P if both arguments
-      are `TensorTrain`s
+    `TensorTrain` object (if both arguments are `TensorTrain`s)
+      containing a TT-matrix of size M x P for matrix multiplication or TT of size M (P)
+      for matrix vector (vector-matrix) multiplication
     `TensorTrainBatch` if any of the arguments is a `TensorTrainBatch`
 
   Raises:
-    ValueError is the arguments are not TT matrices or if their sizes are not
-    appropriate for a matrix-by-matrix multiplication.
+    ValueError if at least one of the arguments is not a TT matrix or if their sizes are not
+    appropriate for multiplication.
   """
   # Both TensorTrain and TensorTrainBatch are inherited from TensorTrainBase.
-  if not isinstance(tt_matrix_a, TensorTrainBase) or \
-      not isinstance(tt_matrix_b, TensorTrainBase) or \
-      not tt_matrix_a.is_tt_matrix() and not tt_matrix_b.is_tt_matrix():
+  if not isinstance(tt_a, TensorTrainBase) or \
+      not isinstance(tt_b, TensorTrainBase) or \
+      not tt_a.is_tt_matrix() and not tt_b.is_tt_matrix():
     raise ValueError('At least one argument must be a TT matrix.')
 
-  if not shapes.is_batch_broadcasting_possible(tt_matrix_a, tt_matrix_b):
+  if not shapes.is_batch_broadcasting_possible(tt_a, tt_b):
     raise ValueError('The batch sizes are different and not 1, broadcasting is '
                      'not available.')
 
-  ndims = tt_matrix_a.ndims()
-  if tt_matrix_b.ndims() != ndims:
+  ndims = tt_a.ndims()
+  if tt_b.ndims() != ndims:
     raise ValueError('Arguments should have the same number of dimensions, '
-                     'got %d and %d instead.' % (ndims, tt_matrix_b.ndims()))
+                     'got %d and %d instead.' % (ndims, tt_b.ndims()))
 
   # Convert BatchSize 1 batch into TT object to simplify broadcasting.
-  tt_matrix_a = shapes.squeeze_batch_dim(tt_matrix_a)
-  tt_matrix_b = shapes.squeeze_batch_dim(tt_matrix_b)
-  is_a_batch = isinstance(tt_matrix_a, TensorTrainBatch)
-  is_b_batch = isinstance(tt_matrix_b, TensorTrainBatch)
+  tt_a = shapes.squeeze_batch_dim(tt_a)
+  tt_b = shapes.squeeze_batch_dim(tt_b)
+  is_a_batch = isinstance(tt_a, TensorTrainBatch)
+  is_b_batch = isinstance(tt_b, TensorTrainBatch)
   is_res_batch = is_a_batch or is_b_batch
   a_batch_str = 'o' if is_a_batch else ''
   b_batch_str = 'o' if is_b_batch else ''
   res_batch_str = 'o' if is_res_batch else ''
-  a_matrix_str = 'i' if tt_matrix_a.is_tt_matrix() else ''
-  b_matrix_str = 'k' if tt_matrix_b.is_tt_matrix() else ''
+  a_matrix_str = 'i' if tt_a.is_tt_matrix() else ''
+  b_matrix_str = 'k' if tt_b.is_tt_matrix() else ''
   einsum_str = '{}a{}jb,{}cj{}d->{}ac{}{}bd'.format(a_batch_str, a_matrix_str, b_batch_str,
                                                     b_matrix_str, res_batch_str, a_matrix_str, b_matrix_str)
   result_cores = []
   # TODO: name the operation and the resulting tensor.
-  a_shape = shapes.lazy_raw_shape(tt_matrix_a)
-  a_ranks = shapes.lazy_tt_ranks(tt_matrix_a)
-  b_shape = shapes.lazy_raw_shape(tt_matrix_b)
-  b_ranks = shapes.lazy_tt_ranks(tt_matrix_b)
+  a_shape = shapes.lazy_raw_shape(tt_a)
+  a_ranks = shapes.lazy_tt_ranks(tt_a)
+  b_shape = shapes.lazy_raw_shape(tt_b)
+  b_ranks = shapes.lazy_tt_ranks(tt_b)
   if is_res_batch:
     if is_a_batch:
-      batch_size = shapes.lazy_batch_size(tt_matrix_a)
+      batch_size = shapes.lazy_batch_size(tt_a)
     if is_b_batch:
-      batch_size = shapes.lazy_batch_size(tt_matrix_b)
+      batch_size = shapes.lazy_batch_size(tt_b)
   for core_idx in range(ndims):
-    a_core = tt_matrix_a.tt_cores[core_idx]
-    b_core = tt_matrix_b.tt_cores[core_idx]
+    a_core = tt_a.tt_cores[core_idx]
+    b_core = tt_b.tt_cores[core_idx]
     curr_res_core = tf.einsum(einsum_str, a_core, b_core)
 
     res_left_rank = a_ranks[core_idx] * b_ranks[core_idx]
     res_right_rank = a_ranks[core_idx + 1] * b_ranks[core_idx + 1]
-    if tt_matrix_a.is_tt_matrix():
+    if tt_a.is_tt_matrix():
       left_mode = a_shape[0][core_idx]
-    if tt_matrix_b.is_tt_matrix():
+    if tt_b.is_tt_matrix():
       right_mode = b_shape[1][core_idx]
     if is_res_batch:
-      if tt_matrix_a.is_tt_matrix() and tt_matrix_b.is_tt_matrix():
+      if tt_a.is_tt_matrix() and tt_b.is_tt_matrix():
         core_shape = (batch_size, res_left_rank, left_mode, right_mode, res_right_rank)
       else:
-        if tt_matrix_a.is_tt_matrix():
+        if tt_a.is_tt_matrix():
           core_shape = (batch_size, res_left_rank, left_mode, res_right_rank)
         else:
           core_shape = (batch_size, res_left_rank, right_mode, res_right_rank)
     else:
-      if tt_matrix_a.is_tt_matrix() and tt_matrix_b.is_tt_matrix():
+      if tt_a.is_tt_matrix() and tt_b.is_tt_matrix():
         core_shape = (res_left_rank, left_mode, right_mode, res_right_rank)
       else:
-        if tt_matrix_a.is_tt_matrix():
+        if tt_a.is_tt_matrix():
           core_shape = (res_left_rank, left_mode, res_right_rank)
         else:
           core_shape = (res_left_rank, right_mode, res_right_rank)
     curr_res_core = tf.reshape(curr_res_core, core_shape)
     result_cores.append(curr_res_core)
 
-  res_shape = (tt_matrix_a.get_raw_shape()[0], tt_matrix_b.get_raw_shape()[1])
-  static_a_ranks = tt_matrix_a.get_tt_ranks()
-  static_b_ranks = tt_matrix_b.get_tt_ranks()
+  res_shape = []
+  if tt_a.is_tt_matrix():
+    res_shape.append(tt_a.get_raw_shape()[0])
+  if tt_b.is_tt_matrix():
+    res_shape.append(tt_b.get_raw_shape()[1])
+
+  static_a_ranks = tt_a.get_tt_ranks()
+  static_b_ranks = tt_b.get_tt_ranks()
   out_ranks = [a_r * b_r for a_r, b_r in zip(static_a_ranks, static_b_ranks)]
   if is_res_batch:
     return TensorTrainBatch(result_cores, res_shape, out_ranks, batch_size)
