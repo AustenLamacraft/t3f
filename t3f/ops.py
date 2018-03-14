@@ -122,9 +122,8 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b):
   # Both TensorTrain and TensorTrainBatch are inherited from TensorTrainBase.
   if not isinstance(tt_matrix_a, TensorTrainBase) or \
       not isinstance(tt_matrix_b, TensorTrainBase) or \
-      not tt_matrix_a.is_tt_matrix() or \
-      not tt_matrix_b.is_tt_matrix():
-    raise ValueError('Arguments should be TT-matrices')
+      not tt_matrix_a.is_tt_matrix() and not tt_matrix_b.is_tt_matrix():
+    raise ValueError('At least one argument must be a TT matrix.')
 
   if not shapes.is_batch_broadcasting_possible(tt_matrix_a, tt_matrix_b):
     raise ValueError('The batch sizes are different and not 1, broadcasting is '
@@ -144,8 +143,10 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b):
   a_batch_str = 'o' if is_a_batch else ''
   b_batch_str = 'o' if is_b_batch else ''
   res_batch_str = 'o' if is_res_batch else ''
-  einsum_str = '{}aijb,{}cjkd->{}acikbd'.format(a_batch_str, b_batch_str,
-                                                res_batch_str)
+  a_matrix_str = 'i' if tt_matrix_a.is_tt_matrix() else ''
+  b_matrix_str = 'k' if tt_matrix_b.is_tt_matrix() else ''
+  einsum_str = '{}a{}jb,{}cj{}d->{}ac{}{}bd'.format(a_batch_str, a_matrix_str, b_batch_str,
+                                                    b_matrix_str, res_batch_str, a_matrix_str, b_matrix_str)
   result_cores = []
   # TODO: name the operation and the resulting tensor.
   a_shape = shapes.lazy_raw_shape(tt_matrix_a)
@@ -164,13 +165,26 @@ def tt_tt_matmul(tt_matrix_a, tt_matrix_b):
 
     res_left_rank = a_ranks[core_idx] * b_ranks[core_idx]
     res_right_rank = a_ranks[core_idx + 1] * b_ranks[core_idx + 1]
-    left_mode = a_shape[0][core_idx]
-    right_mode = b_shape[1][core_idx]
+    if tt_matrix_a.is_tt_matrix():
+      left_mode = a_shape[0][core_idx]
+    if tt_matrix_b.is_tt_matrix():
+      right_mode = b_shape[1][core_idx]
     if is_res_batch:
-      core_shape = (batch_size, res_left_rank, left_mode, right_mode, res_right_rank)
+      if tt_matrix_a.is_tt_matrix() and tt_matrix_b.is_tt_matrix():
+        core_shape = (batch_size, res_left_rank, left_mode, right_mode, res_right_rank)
+      else:
+        if tt_matrix_a.is_tt_matrix():
+          core_shape = (batch_size, res_left_rank, left_mode, res_right_rank)
+        else:
+          core_shape = (batch_size, res_left_rank, right_mode, res_right_rank)
     else:
-      core_shape = (res_left_rank, left_mode, right_mode,
-                    res_right_rank)
+      if tt_matrix_a.is_tt_matrix() and tt_matrix_b.is_tt_matrix():
+        core_shape = (res_left_rank, left_mode, right_mode, res_right_rank)
+      else:
+        if tt_matrix_a.is_tt_matrix():
+          core_shape = (res_left_rank, left_mode, res_right_rank)
+        else:
+          core_shape = (res_left_rank, right_mode, res_right_rank)
     curr_res_core = tf.reshape(curr_res_core, core_shape)
     result_cores.append(curr_res_core)
 
