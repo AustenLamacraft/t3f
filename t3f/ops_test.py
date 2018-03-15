@@ -821,6 +821,23 @@ class TTMatrixTestBatch(tf.test.TestCase):
       res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
       self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
 
+  def testTTMatTimesTTVecOnLeftSameBatchSize(self):
+    # Multiply a batch of TT-matrices by another batch of TT-vectors on the left with the
+    # same batch sizes.
+    left_shape = (2, 3)
+    right_shape = (4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix_batch((left_shape, right_shape),
+                                                  tt_rank=3, batch_size=3)
+      tt_vec = initializers.random_tensor_batch(left_shape,
+                                                  batch_size=3)
+      res_actual = ops.matmul(tt_vec, tt_mat)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('on,onm->om', tf.layers.flatten(ops.full(tt_vec)), ops.full(tt_mat))
+      res_desired = tf.reshape(res_desired, (3,4,4))
+      res_actual_val, res_desired_val = sess.run([res_actual, res_desired])
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
+
   def testTTMatTimesTTMatBroadcasting(self):
     # Multiply a batch of TT-matrices by another batch of TT-matrices with
     # broadcasting.
