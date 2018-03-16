@@ -862,6 +862,42 @@ class TTMatrixTestBatch(tf.test.TestCase):
       self.assertAllClose(res_actual2_val, res_desired_val, atol=1e-5,
                           rtol=1e-5)
 
+  def testTTMatTimesTTVecOnRightBroadcasting(self):
+    # Multiply a batch of TT-matrices by a batch of TT-vectors on the right with
+    # broadcasting.
+    left_shape = (2, 3)
+    right_shape = (4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix_batch((left_shape, right_shape),
+                                                  tt_rank=3, batch_size=3)
+      tt_vec = initializers.random_tensor_batch(right_shape)
+      # TT-batch by one element TT-batch
+      res_actual = ops.matmul(tt_mat, tt_vec)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('oij,j->oi', ops.full(tt_mat), tf.layers.flatten(ops.full(tt_vec))[0])
+      res_desired = tf.reshape(res_desired, (3,2,3))
+      to_run = [res_actual, res_desired]
+      res_actual_val, res_desired_val = sess.run(to_run)
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
+
+  def testTTMatTimesTTVecOnLeftBroadcasting(self):
+    # Multiply a batch of TT-matrices by a batch of TT-vectors on the right with
+    # broadcasting.
+    left_shape = (2, 3)
+    right_shape = (4, 4)
+    with self.test_session() as sess:
+      tt_mat = initializers.random_matrix_batch((left_shape, right_shape),
+                                                  tt_rank=3, batch_size=3)
+      tt_vec = initializers.random_tensor_batch(left_shape)
+      # TT-batch by one element TT-batch
+      res_actual = ops.matmul(tt_vec, tt_mat)
+      res_actual = ops.full(res_actual)
+      res_desired = tf.einsum('i,oij->oj', tf.layers.flatten(ops.full(tt_vec))[0], ops.full(tt_mat))
+      res_desired = tf.reshape(res_desired, (3,4,4))
+      to_run = [res_actual, res_desired]
+      res_actual_val, res_desired_val = sess.run(to_run)
+      self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
+
   def testTranspose(self):
     # Transpose a batch of TT-matrices.
     with self.test_session() as sess:
