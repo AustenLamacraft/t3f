@@ -863,7 +863,7 @@ class TTMatrixTestBatch(tf.test.TestCase):
                           rtol=1e-5)
 
   def testTTMatTimesTTVecOnRightBroadcasting(self):
-    # Multiply a batch of TT-matrices by a batch of TT-vectors on the right with
+    # Multiply a batch of TT-matrices by a batch of 1 TT-vector on the right with
     # broadcasting.
     left_shape = (2, 3)
     right_shape = (4, 4)
@@ -881,7 +881,7 @@ class TTMatrixTestBatch(tf.test.TestCase):
       self.assertAllClose(res_actual_val, res_desired_val, atol=1e-5, rtol=1e-5)
 
   def testTTMatTimesTTVecOnLeftBroadcasting(self):
-    # Multiply a batch of TT-matrices by a batch of TT-vectors on the right with
+    # Multiply a batch of TT-matrices by a batch of 1 TT-vector on the left with
     # broadcasting.
     left_shape = (2, 3)
     right_shape = (4, 4)
